@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SmartExpense Manager</title>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600&display=swap"
+        rel="stylesheet" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+    <link rel="stylesheet" href="css/style.css" />
+    <link rel="icon" href="favicon.ico" />
+</head>
+
+<body>
+
+    <!-- LOADING OVERLAY -->
+    <div class="loading-overlay" id="glob-loader">
+        <div class="spinner"></div>
+    </div>
+
+    <!-- ══════════════════════════════════════════════
+     AUTH SCREEN
+══════════════════════════════════════════════ -->
+    <div id="auth-screen" style="display:none">
+        <div class="auth-card">
+            <div class="auth-logo">
+                <div class="logo-box"><i class="fa-solid fa-wallet"></i></div>
+                <div>
+                    <h1>SmartExpense</h1><span>Personal Finance Manager</span>
+                </div>
+            </div>
+            <div class="auth-tabs">
+                <button class="auth-tab active" id="tab-login" onclick="switchTab('login')">Sign In</button>
+                <button class="auth-tab" id="tab-register" onclick="switchTab('register')">Register</button>
+            </div>
+
+            <!-- LOGIN -->
+            <div class="auth-form active" id="form-login">
+                <h2>Welcome back!</h2>
+                <p>Sign in to manage your finances</p>
+                <div class="alerr" id="login-err"></div>
+                <div class="fg">
+                    <label>Username</label>
+                    <div class="iw"><i class="fi fa fa-user"></i><input type="text" id="login-u"
+                            placeholder="Your username" autocomplete="username" /></div>
+                </div>
+                <div class="fg">
+                    <label>Password</label>
+                    <div class="iw"><i class="fi fa fa-lock"></i><input type="password" id="login-p"
+                            placeholder="Your password" autocomplete="current-password" /><button class="eye-btn"
+                            onclick="tpwd('login-p',this)"><i class="fa fa-eye"></i></button></div>
+                </div>
+                <button class="btn-auth" id="login-btn" onclick="doLogin()"><i class="fa fa-arrow-right-to-bracket"></i>
+                    Sign In</button>
+                <div class="auth-div"><span>new here?</span></div>
+                <div style="text-align:center"><button class="auth-link" onclick="switchTab('register')">Create a free
+                        account →</button></div>
+            </div>
+
+            <!-- REGISTER -->
+            <div class="auth-form" id="form-register">
+                <h2>Create Account</h2>
+                <p>Start tracking expenses for free</p>
+                <div class="alerr" id="reg-err"></div>
+                <div class="alok" id="reg-ok"></div>
+                <div class="fg">
+                    <label>Full Name</label>
+                    <div class="iw"><i class="fi fa fa-id-card"></i><input type="text" id="reg-n"
+                            placeholder="Your full name" autocomplete="name" /></div>
+                </div>
+                <div class="fg">
+                    <label>Username</label>
+                    <div class="iw"><i class="fi fa fa-user"></i><input type="text" id="reg-u"
+                            placeholder="Choose a username" autocomplete="username" oninput="chkUser(this.value)" />
+                    </div>
+                    <small id="uc" style="font-size:.69rem;margin-top:2px;display:block"></small>
+                </div>
+                <div class="fg">
+                    <label>Password</label>
+                    <div class="iw"><i class="fi fa fa-lock"></i><input type="password" id="reg-p"
+                            placeholder="Min. 6 characters" autocomplete="new-password"
+                            oninput="chkStr(this.value)" /><button class="eye-btn" onclick="tpwd('reg-p',this)"><i
+                                class="fa fa-eye"></i></button></div>
+                    <div class="str-bar">
+                        <div class="str-fill" id="sf"></div>
+                    </div>
+                    <div class="str-lbl" id="sl">Enter a password</div>
+                </div>
+                <div class="fg">
+                    <label>Confirm Password</label>
+                    <div class="iw"><i class="fi fa fa-lock"></i><input type="password" id="reg-c"
+                            placeholder="Repeat password" autocomplete="new-password" /><button class="eye-btn"
+                            onclick="tpwd('reg-c',this)"><i class="fa fa-eye"></i></button></div>
+                </div>
+                <button class="btn-auth" id="reg-btn" onclick="doRegister()"><i class="fa fa-user-plus"></i> Create
+                    Account</button>
+                <div class="auth-div"><span>have an account?</span></div>
+                <div style="text-align:center"><button class="auth-link" onclick="switchTab('login')">← Sign in
+                        instead</button></div>
+            </div>
+
+
+        </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════════
+     APP
+══════════════════════════════════════════════ -->
+    <div id="app">
+        <div id="sbo" onclick="closeSB()"></div>
+
+        <!-- SIDEBAR -->
+        <nav id="sidebar">
+            <div class="sl">
+                <div class="logo-box"><i class="fa-solid fa-wallet"></i></div>
+                <div class="brand">
+                    <h2>SmartExpense</h2><span>Manager</span>
+                </div>
+            </div>
+            <div class="sn">
+                <div class="nl">Main</div>
+                <button class="ni active" data-page="dashboard"><i class="fa-solid fa-chart-pie"></i>Dashboard</button>
+                <button class="ni" data-page="transactions"><i
+                        class="fa-solid fa-arrows-left-right"></i>Transactions</button>
+                <button class="ni" data-page="budget"><i class="fa-solid fa-bullseye"></i>Budget Planner</button>
+                <div class="nl">Insights</div>
+                <button class="ni" data-page="reports"><i class="fa-solid fa-chart-bar"></i>Reports</button>
+                <div class="nl">Account</div>
+                <button class="ni" data-page="settings"><i class="fa-solid fa-gear"></i>Settings</button>
+            </div>
+            <div class="sf">
+                <div class="db-badge">
+                    <div class="db-dot"></div><span>SQLite DB</span>
+                </div>
+                <div class="upill">
+                    <div class="uav" id="sav">U</div>
+                    <div class="ui">
+                        <div class="un" id="sun">User</div>
+                        <div class="ur">Local Account</div>
+                    </div>
+                </div>
+                <button class="lob" onclick="doLogout()"><i class="fa-solid fa-right-from-bracket"></i>Sign Out</button>
+                <div class="trow"><span id="app-tlbl">☀️ Light</span><button class="tgl"
+                        onclick="toggleTheme()"></button></div>
+            </div>
+        </nav>
+
+        <!-- MAIN -->
+        <div id="main">
+            <div class="topbar">
+                <button class="hbg" onclick="openSB()"><i class="fa-solid fa-bars"></i></button>
+                <div class="tt">
+                    <h1 id="ptitle">Dashboard</h1>
+                    <p id="psub">Overview of your finances</p>
+                </div>
+                <div class="ta">
+                    <button class="btn bo bs" onclick="openModal('income')"><i class="fa fa-plus"></i>Income</button>
+                    <button class="btn bp bs" onclick="openModal('expense')"><i class="fa fa-minus"></i>Expense</button>
+                </div>
+            </div>
+
+            <div class="pc">
+
+                <!-- DASHBOARD -->
+                <div class="page active" id="page-dashboard">
+                    <div class="sg">
+                        <div class="sc bal">
+                            <div class="ci"><i class="fa fa-scale-balanced"></i></div>
+                            <div class="cl">Net Balance</div>
+                            <div class="ca" id="d-bal">₹0</div>
+                            <div class="cs">All time</div>
+                        </div>
+                        <div class="sc inc">
+                            <div class="ci"><i class="fa fa-arrow-trend-up"></i></div>
+                            <div class="cl">Total Income</div>
+                            <div class="ca" id="d-inc">₹0</div>
+                            <div class="cs" id="d-inc-c">0 transactions</div>
+                        </div>
+                        <div class="sc exp">
+                            <div class="ci"><i class="fa fa-arrow-trend-down"></i></div>
+                            <div class="cl">Total Expenses</div>
+                            <div class="ca" id="d-exp">₹0</div>
+                            <div class="cs" id="d-exp-c">0 transactions</div>
+                        </div>
+                    </div>
+                    <div class="cg">
+                        <div class="cc">
+                            <h3>Monthly Overview <span class="chip" id="d-mchip"></span></h3><canvas
+                                id="monthlyChart"></canvas>
+                        </div>
+                        <div class="cc">
+                            <h3>By Category</h3><canvas id="categoryChart"></canvas>
+                        </div>
+                    </div>
+                    <div class="rc">
+                        <div class="sh">
+                            <h3>Recent Transactions</h3><button class="btn bo bs" onclick="nav('transactions')">View
+                                All</button>
+                        </div>
+                        <div class="tl" id="recent-list">
+                            <div class="es"><i class="fa fa-spinner fa-spin"></i>
+                                <p>Loading…</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- TRANSACTIONS -->
+                <div class="page" id="page-transactions">
+                    <div class="fb">
+                        <input type="search" id="ts" placeholder="🔍 Search…" />
+                        <select id="tf-type">
+                            <option value="">All Types</option>
+                            <option value="income">Income</option>
+                            <option value="expense">Expense</option>
+                        </select>
+                        <select id="tf-cat">
+                            <option value="">All Categories</option>
+                        </select>
+                        <select id="tf-month">
+                            <option value="">All Months</option>
+                        </select>
+                        <button class="btn bo bs" id="cf-btn"><i class="fa fa-xmark"></i>Clear</button>
+                    </div>
+                    <div class="ttc">
+                        <div class="tth"><span>Description</span><span class="col-cat">Category</span><span
+                                class="col-type">Type</span><span class="col-date">Date</span><span>Amount</span></div>
+                        <div class="ttb" id="ttb">
+                            <div class="es"><i class="fa fa-spinner fa-spin"></i>
+                                <p>Loading…</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- BUDGET -->
+                <div class="page" id="page-budget">
+                    <div class="abc">
+                        <h3><i class="fa fa-plus-circle" style="color:var(--accent);margin-right:5px"></i>Set / Update
+                            Budget</h3>
+                        <div class="fr">
+                            <div class="fg2"><label>Category</label><select id="bc-sel"></select></div>
+                            <div class="fg2"><label>Monthly Limit (<span class="csym">₹</span>)</label><input
+                                    type="number" id="bl-inp" placeholder="Amount" min="0" /></div>
+                            <button class="btn bp" id="sb-btn"><i class="fa fa-floppy-disk"></i>Save</button>
+                        </div>
+                    </div>
+                    <div class="sh">
+                        <h3>Budget vs Spending — <span id="bml"></span></h3>
+                        <div class="chip"><i class="fa fa-circle-info"></i>Current month</div>
+                    </div>
+                    <div class="bg2 mt16" id="bgrid">
+                        <div class="es" style="grid-column:1/-1"><i class="fa fa-spinner fa-spin"></i>
+                            <p>Loading…</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- REPORTS -->
+                <div class="page" id="page-reports">
+                    <div class="rg">
+                        <div class="rca">
+                            <h3>Income vs Expense — Last 6 Months</h3><canvas id="trendChart"></canvas>
+                        </div>
+                        <div class="rca">
+                            <h3>Category Breakdown</h3><canvas id="catChart"></canvas>
+                        </div>
+                    </div>
+                    <div class="rg">
+                        <div class="rca">
+                            <h3>Top Spending Categories</h3>
+                            <div class="sl2" id="top-cats"></div>
+                        </div>
+                        <div class="rca">
+                            <h3>Monthly Summary</h3>
+                            <div class="sl2" id="mon-sum"></div>
+                        </div>
+                    </div>
+                    <div class="exb">
+                        <div><strong>Export Data</strong>
+                            <p>Download your transactions as a CSV file.</p>
+                        </div>
+                        <button class="btn bo" id="exp-btn"><i class="fa fa-download"></i>Export CSV</button>
+                    </div>
+                </div>
+
+                <!-- SETTINGS -->
+                <div class="page" id="page-settings">
+                    <div class="ss">
+                        <h3><i class="fa fa-user" style="color:var(--accent);margin-right:7px"></i>Profile</h3>
+                        <div class="stg">
+                            <div class="fg3"><label>Display Name</label><input type="text" id="s-name"
+                                    placeholder="Your name" /></div>
+                            <div class="fg3"><label>Currency Symbol</label>
+                                <select id="s-cur">
+                                    <option value="₹">₹ — Indian Rupee (INR)</option>
+                                    <option value="$">$ — US Dollar (USD)</option>
+                                    <option value="€">€ — Euro (EUR)</option>
+                                    <option value="£">£ — British Pound (GBP)</option>
+                                    <option value="¥">¥ — Japanese Yen (JPY)</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div style="margin-top:12px"><button class="btn bp" id="ss-btn"><i
+                                    class="fa fa-floppy-disk"></i>Save Settings</button></div>
+                    </div>
+                    <div class="ss">
+                        <h3><i class="fa fa-lock" style="color:var(--accent);margin-right:7px"></i>Change Password</h3>
+                        <div class="stg">
+                            <div class="fg3"><label>Current Password</label><input type="password" id="cp"
+                                    placeholder="Current password" /></div>
+                            <div class="fg3"><label>New Password (min 6)</label><input type="password" id="np"
+                                    placeholder="New password" /></div>
+                        </div>
+                        <div style="margin-top:12px"><button class="btn bp" id="cpw-btn"><i class="fa fa-key"></i>Update
+                                Password</button></div>
+                    </div>
+                    <div class="ss">
+                        <h3><i class="fa fa-palette" style="color:var(--accent);margin-right:7px"></i>Appearance</h3>
+                        <div class="setr">
+                            <div>
+                                <div class="sl3">Dark Mode</div>
+                                <div class="ss3">Toggle between light and dark theme</div>
+                            </div>
+                            <button class="tgl" onclick="toggleTheme()"></button>
+                        </div>
+                    </div>
+                    <div class="ss">
+                        <h3><i class="fa fa-tag" style="color:var(--accent);margin-right:7px"></i>Categories</h3>
+                        <div style="display:flex;flex-wrap:wrap;gap:6px" id="cat-chips"></div>
+                    </div>
+                    <div class="ss">
+                        <h3><i class="fa fa-database" style="color:var(--accent);margin-right:7px"></i>Database Info
+                        </h3>
+                        <div class="setr" style="flex-direction:column;align-items:flex-start;gap:4px;padding:10px 0">
+                            <div class="sl3">SQLite File Database</div>
+                            <div class="ss3">All data is stored in <strong>expense.db</strong> in the project folder.
+                                Your data is fully offline and private.</div>
+                        </div>
+                    </div>
+                    <div class="ss dz">
+                        <h3><i class="fa fa-triangle-exclamation" style="margin-right:7px"></i>Danger Zone</h3>
+                        <div class="setr">
+                            <div>
+                                <div class="sl3">Clear My Data</div>
+                                <div class="ss3">Delete all your transactions &amp; budgets</div>
+                            </div>
+                            <button class="btn bd bs" id="clr-btn"><i class="fa fa-trash"></i>Clear</button>
+                        </div>
+                        <div class="setr">
+                            <div>
+                                <div class="sl3">Delete Account</div>
+                                <div class="ss3">Permanently remove your account and all data</div>
+                            </div>
+                            <button class="btn bd bs" id="del-acc-btn"><i class="fa fa-user-xmark"></i>Delete</button>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL -->
+    <div class="mo" id="txn-modal">
+        <div class="md">
+            <div class="mh">
+                <h2 id="modal-title">Add Transaction</h2><button class="mc" onclick="closeModal()"><i
+                        class="fa fa-xmark"></i></button>
+            </div>
+            <div class="tyt">
+                <button class="tyb active income" data-type="income"><i class="fa fa-arrow-up"></i> Income</button>
+                <button class="tyb expense" data-type="expense"><i class="fa fa-arrow-down"></i> Expense</button>
+            </div>
+            <div class="fg"><label>Description</label><input type="text" id="txn-note" placeholder="e.g. Lunch, Salary…"
+                    maxlength="100" /></div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:11px">
+                <div class="fg"><label>Amount (<span class="csym">₹</span>)</label><input type="number" id="txn-amt"
+                        placeholder="0.00" min="0" step="0.01" /></div>
+                <div class="fg"><label>Date</label><input type="date" id="txn-date" /></div>
+            </div>
+            <div class="fg"><label>Category</label><select id="txn-cat"></select></div>
+            <div class="mf">
+                <button class="btn bo" onclick="closeModal()">Cancel</button>
+                <button class="btn bp" id="msave"><i class="fa fa-floppy-disk"></i>Save</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="tc"></div>
+
+    <!-- Application Script -->
+    <script src="js/app.js"></script>
+</body>
+
+</html>
