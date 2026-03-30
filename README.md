@@ -406,7 +406,7 @@ If SmartExpense helped you manage your money better, consider:
 <img src="https://capsule-render.vercel.app/api?type=waving&color=0:1b4332,50:2d6a4f,100:52b788&height=120&section=footer" width="100%" />
 
 <p>
-  <strong>Built with 💚 by the SmartExpense Team</strong>
+  <strong>Built with 💚 by Prathamesh Barbole</strong>
 </p>
 
 <p>
