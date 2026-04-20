@@ -10,7 +10,6 @@
 const express = require('express');
 const session = require('express-session');
 const mongoose = require('mongoose');
-const MongoStore = require('connect-mongo');
 const crypto = require('crypto');
 const path = require('path');
 
@@ -83,10 +82,6 @@ app.use(session({
     secret: process.env.SESSION_SECRET || 'sem_super_secret_2024_xJ9k',
     resave: false,
     saveUninitialized: false,
-    store: MongoStore.create({
-        clientPromise: clientPromise,
-        collectionName: 'sessions'
-    }),
     cookie: {
         maxAge: 7 * 24 * 60 * 60 * 1000,   // 7 days
         httpOnly: true,
