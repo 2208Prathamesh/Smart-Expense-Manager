@@ -5,12 +5,13 @@
     "main": "server.js",
     "scripts": {
         "start": "node server.js",
-        "dev": "node server.js",
-        "seed": "node seed.js"
+        "dev": "node server.js"
     },
     "dependencies": {
+        "connect-mongo": "^6.0.0",
         "express": "^4.18.2",
-        "express-session": "^1.17.3"
+        "express-session": "^1.17.3",
+        "mongoose": "^9.4.1"
     },
     "author": "SmartExpense",
     "license": "MIT"

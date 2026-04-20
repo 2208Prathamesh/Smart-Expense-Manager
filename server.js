@@ -1,69 +1,59 @@
 /**
  * ══════════════════════════════════════════════════════════
  *   SMART EXPENSE MANAGER — SERVER
- *   Node.js + Express + built-in SQLite (node:sqlite)
- *   Database saved as: expense.db  (same folder as server.js)
+ *   Node.js + Express + MongoDB
  * ══════════════════════════════════════════════════════════
- *
- *  HOW TO RUN:
- *    1.  npm install
- *    2.  node server.js
- *    3.  Open http://localhost:3001
  */
 
 'use strict';
 
 const express = require('express');
 const session = require('express-session');
-const { DatabaseSync } = require('node:sqlite');
+const mongoose = require('mongoose');
+const MongoStore = require('connect-mongo');
 const crypto = require('crypto');
 const path = require('path');
 
 // ── Config ─────────────────────────────────────────────────
-const PORT = 3001;
-const DB_FILE = path.join(__dirname, 'expense.db');
+const PORT = process.env.PORT || 3001;
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/smart-expense';
 
 // ── Database ────────────────────────────────────────────────
-const db = new DatabaseSync(DB_FILE);
-db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;'); // Better concurrent access
+mongoose.connect(MONGODB_URI)
+  .then(() => console.log('✅ Connected to MongoDB'))
+  .catch(err => console.error('❌ MongoDB connection error:', err));
 
-db.exec(`
-  CREATE TABLE IF NOT EXISTS users (
-    id            INTEGER PRIMARY KEY AUTOINCREMENT,
-    fullname      TEXT    NOT NULL,
-    username      TEXT    UNIQUE NOT NULL,
-    password_hash TEXT    NOT NULL,
-    salt          TEXT    NOT NULL,
-    currency      TEXT    NOT NULL DEFAULT '₹',
-    theme         TEXT    NOT NULL DEFAULT 'light',
-    created_at    TEXT    DEFAULT (datetime('now','localtime'))
-  );
+// Schemas
+const userSchema = new mongoose.Schema({
+    fullname: { type: String, required: true },
+    username: { type: String, required: true, unique: true, lowercase: true },
+    password_hash: { type: String, required: true },
+    salt: { type: String, required: true },
+    currency: { type: String, default: '₹' },
+    theme: { type: String, default: 'light' },
+    created_at: { type: Date, default: Date.now }
+});
 
-  CREATE TABLE IF NOT EXISTS transactions (
-    id         INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id    INTEGER NOT NULL,
-    type       TEXT    CHECK(type IN ('income','expense')) NOT NULL,
-    category   TEXT    NOT NULL,
-    amount     REAL    NOT NULL,
-    note       TEXT    NOT NULL DEFAULT '',
-    date       TEXT    NOT NULL,
-    created_at TEXT    DEFAULT (datetime('now','localtime')),
-    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
-  );
+const transactionSchema = new mongoose.Schema({
+    user_id: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    type: { type: String, enum: ['income', 'expense'], required: true },
+    category: { type: String, required: true },
+    amount: { type: Number, required: true },
+    note: { type: String, default: '' },
+    date: { type: String, required: true }, // Format YYYY-MM-DD
+    created_at: { type: Date, default: Date.now }
+});
 
-  CREATE TABLE IF NOT EXISTS budgets (
-    id            INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id       INTEGER NOT NULL,
-    category      TEXT    NOT NULL,
-    monthly_limit REAL    NOT NULL,
-    UNIQUE(user_id, category),
-    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
-  );
+const budgetSchema = new mongoose.Schema({
+    user_id: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    category: { type: String, required: true },
+    monthly_limit: { type: Number, required: true }
+});
+budgetSchema.index({ user_id: 1, category: 1 }, { unique: true });
 
-  CREATE INDEX IF NOT EXISTS idx_txn_user  ON transactions(user_id);
-  CREATE INDEX IF NOT EXISTS idx_txn_date  ON transactions(date);
-  CREATE INDEX IF NOT EXISTS idx_bud_user  ON budgets(user_id);
-`);
+const User = mongoose.model('User', userSchema);
+const Transaction = mongoose.model('Transaction', transactionSchema);
+const Budget = mongoose.model('Budget', budgetSchema);
 
 // ── Helpers ─────────────────────────────────────────────────
 function genSalt() { return crypto.randomBytes(16).toString('hex'); }
@@ -82,9 +72,13 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 // Session
 app.use(session({
-    secret: 'sem_super_secret_2024_xJ9k',
+    secret: process.env.SESSION_SECRET || 'sem_super_secret_2024_xJ9k',
     resave: false,
     saveUninitialized: false,
+    store: MongoStore.create({
+        mongoUrl: MONGODB_URI,
+        collectionName: 'sessions'
+    }),
     cookie: {
         maxAge: 7 * 24 * 60 * 60 * 1000,   // 7 days
         httpOnly: true,
@@ -102,194 +96,300 @@ function auth(req, res, next) {
 //   AUTH ROUTES
 // ══════════════════════════════════════════════════════════
 
-// Register
-app.post('/api/auth/register', (req, res) => {
-    const { fullname, username, password } = req.body;
+app.post('/api/auth/register', async (req, res) => {
+    try {
+        const { fullname, username, password } = req.body;
 
-    if (!fullname || !username || !password)
-        return res.status(400).json({ error: 'All fields are required.' });
-    if (username.length < 3)
-        return res.status(400).json({ error: 'Username must be at least 3 characters.' });
-    if (!/^[a-z0-9_]+$/.test(username.toLowerCase()))
-        return res.status(400).json({ error: 'Username: letters, numbers, underscore only.' });
-    if (password.length < 6)
-        return res.status(400).json({ error: 'Password must be at least 6 characters.' });
+        if (!fullname || !username || !password)
+            return res.status(400).json({ error: 'All fields are required.' });
+        if (username.length < 3)
+            return res.status(400).json({ error: 'Username must be at least 3 characters.' });
+        if (!/^[a-z0-9_]+$/.test(username.toLowerCase()))
+            return res.status(400).json({ error: 'Username: letters, numbers, underscore only.' });
+        if (password.length < 6)
+            return res.status(400).json({ error: 'Password must be at least 6 characters.' });
 
-    const exists = db.prepare('SELECT id FROM users WHERE username = ?').get(username.toLowerCase());
-    if (exists) return res.status(400).json({ error: 'Username already taken.' });
+        const exists = await User.findOne({ username: username.toLowerCase() });
+        if (exists) return res.status(400).json({ error: 'Username already taken.' });
 
-    const salt = genSalt();
-    const hash = hashPwd(password, salt);
-    db.prepare('INSERT INTO users (fullname, username, password_hash, salt) VALUES (?, ?, ?, ?)')
-        .run(fullname.trim(), username.toLowerCase(), hash, salt);
+        const salt = genSalt();
+        const hash = hashPwd(password, salt);
+        
+        const newUser = new User({
+            fullname: fullname.trim(),
+            username: username.toLowerCase(),
+            password_hash: hash,
+            salt: salt
+        });
+        await newUser.save();
 
-    res.json({ success: true, message: 'Account created successfully!' });
+        res.json({ success: true, message: 'Account created successfully!' });
+    } catch (err) {
+        res.status(500).json({ error: 'Server error during registration.' });
+    }
 });
 
-// Login
-app.post('/api/auth/login', (req, res) => {
-    const { username, password } = req.body;
-    if (!username || !password)
-        return res.status(400).json({ error: 'Username and password required.' });
+app.post('/api/auth/login', async (req, res) => {
+    try {
+        const { username, password } = req.body;
+        if (!username || !password)
+            return res.status(400).json({ error: 'Username and password required.' });
 
-    const user = db.prepare('SELECT * FROM users WHERE username = ?').get(username.toLowerCase());
-    if (!user) return res.status(401).json({ error: 'Invalid username or password.' });
+        const user = await User.findOne({ username: username.toLowerCase() });
+        if (!user) return res.status(401).json({ error: 'Invalid username or password.' });
 
-    const hash = hashPwd(password, user.salt);
-    if (hash !== user.password_hash)
-        return res.status(401).json({ error: 'Invalid username or password.' });
+        const hash = hashPwd(password, user.salt);
+        if (hash !== user.password_hash)
+            return res.status(401).json({ error: 'Invalid username or password.' });
 
-    req.session.userId = user.id;
-    res.json({
-        success: true,
-        user: { id: user.id, fullname: user.fullname, username: user.username, currency: user.currency, theme: user.theme }
-    });
+        req.session.userId = user._id.toString();
+        res.json({
+            success: true,
+            user: { id: user._id, fullname: user.fullname, username: user.username, currency: user.currency, theme: user.theme }
+        });
+    } catch (err) {
+        res.status(500).json({ error: 'Server error during login.' });
+    }
 });
 
-// Logout
 app.post('/api/auth/logout', (req, res) => {
     req.session.destroy(() => res.json({ success: true }));
 });
 
-// Get current user (session restore)
-app.get('/api/me', auth, (req, res) => {
-    const user = db.prepare('SELECT id, fullname, username, currency, theme FROM users WHERE id = ?')
-        .get(req.session.userId);
-    if (!user) return res.status(401).json({ error: 'User not found.' });
-    res.json(user);
+app.get('/api/me', auth, async (req, res) => {
+    try {
+        const user = await User.findById(req.session.userId, 'fullname username currency theme');
+        if (!user) return res.status(401).json({ error: 'User not found.' });
+        
+        res.json({
+            id: user._id,
+            fullname: user.fullname,
+            username: user.username,
+            currency: user.currency,
+            theme: user.theme
+        });
+    } catch (err) {
+        res.status(500).json({ error: 'Server error.' });
+    }
 });
 
-// Check username availability
-app.get('/api/auth/check/:username', (req, res) => {
-    const exists = db.prepare('SELECT id FROM users WHERE username = ?')
-        .get(req.params.username.toLowerCase());
-    res.json({ available: !exists });
+app.get('/api/auth/check/:username', async (req, res) => {
+    try {
+        const exists = await User.findOne({ username: req.params.username.toLowerCase() }, '_id');
+        res.json({ available: !exists });
+    } catch (err) {
+        res.status(500).json({ error: 'Server error.' });
+    }
 });
 
 // ══════════════════════════════════════════════════════════
 //   TRANSACTION ROUTES
 // ══════════════════════════════════════════════════════════
 
-app.get('/api/transactions', auth, (req, res) => {
-    const rows = db.prepare(
-        'SELECT * FROM transactions WHERE user_id = ? ORDER BY date DESC, id DESC'
-    ).all(req.session.userId);
-    res.json(rows);
+app.get('/api/transactions', auth, async (req, res) => {
+    try {
+        const rows = await Transaction.find({ user_id: req.session.userId })
+            .sort({ date: -1, _id: -1 })
+            .lean();
+            
+        // Map _id to id for frontend compatibility
+        const formattedRows = rows.map(r => ({ ...r, id: r._id }));
+        res.json(formattedRows);
+    } catch (err) {
+        res.status(500).json({ error: 'Server error.' });
+    }
 });
 
-app.post('/api/transactions', auth, (req, res) => {
-    const { type, category, amount, note, date } = req.body;
-    if (!type || !category || !amount || !date)
-        return res.status(400).json({ error: 'Missing required fields.' });
-    const r = db.prepare(
-        'INSERT INTO transactions (user_id, type, category, amount, note, date) VALUES (?, ?, ?, ?, ?, ?)'
-    ).run(req.session.userId, type, category, parseFloat(amount), note || '', date);
-    res.json({ id: r.lastInsertRowid, user_id: req.session.userId, type, category, amount: parseFloat(amount), note: note || '', date });
+app.post('/api/transactions', auth, async (req, res) => {
+    try {
+        const { type, category, amount, note, date } = req.body;
+        if (!type || !category || !amount || !date)
+            return res.status(400).json({ error: 'Missing required fields.' });
+            
+        const txn = new Transaction({
+            user_id: req.session.userId,
+            type,
+            category,
+            amount: parseFloat(amount),
+            note: note || '',
+            date
+        });
+        await txn.save();
+        
+        res.json({ 
+            id: txn._id, 
+            user_id: req.session.userId, 
+            type, 
+            category, 
+            amount: parseFloat(amount), 
+            note: note || '', 
+            date 
+        });
+    } catch (err) {
+        res.status(500).json({ error: 'Server error.' });
+    }
 });
 
-app.put('/api/transactions/:id', auth, (req, res) => {
-    const { type, category, amount, note, date } = req.body;
-    db.prepare(
-        'UPDATE transactions SET type=?, category=?, amount=?, note=?, date=? WHERE id=? AND user_id=?'
-    ).run(type, category, parseFloat(amount), note || '', date, req.params.id, req.session.userId);
-    res.json({ success: true });
+app.put('/api/transactions/:id', auth, async (req, res) => {
+    try {
+        const { type, category, amount, note, date } = req.body;
+        await Transaction.findOneAndUpdate(
+            { _id: req.params.id, user_id: req.session.userId },
+            { type, category, amount: parseFloat(amount), note: note || '', date }
+        );
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: 'Server error.' });
+    }
 });
 
-app.delete('/api/transactions/:id', auth, (req, res) => {
-    db.prepare('DELETE FROM transactions WHERE id = ? AND user_id = ?')
-        .run(req.params.id, req.session.userId);
-    res.json({ success: true });
+app.delete('/api/transactions/:id', auth, async (req, res) => {
+    try {
+        await Transaction.findOneAndDelete({ _id: req.params.id, user_id: req.session.userId });
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: 'Server error.' });
+    }
 });
 
-// Clear all user transactions
-app.delete('/api/transactions', auth, (req, res) => {
-    db.prepare('DELETE FROM transactions WHERE user_id = ?').run(req.session.userId);
-    res.json({ success: true });
+app.delete('/api/transactions', auth, async (req, res) => {
+    try {
+        await Transaction.deleteMany({ user_id: req.session.userId });
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: 'Server error.' });
+    }
 });
 
 // ══════════════════════════════════════════════════════════
 //   BUDGET ROUTES
 // ══════════════════════════════════════════════════════════
 
-app.get('/api/budgets', auth, (req, res) => {
-    const rows = db.prepare('SELECT * FROM budgets WHERE user_id = ?').all(req.session.userId);
-    res.json(rows);
+app.get('/api/budgets', auth, async (req, res) => {
+    try {
+        const rows = await Budget.find({ user_id: req.session.userId }).lean();
+        // Map _id to id
+        const formattedRows = rows.map(r => ({ ...r, id: r._id }));
+        res.json(formattedRows);
+    } catch (err) {
+        res.status(500).json({ error: 'Server error.' });
+    }
 });
 
-app.post('/api/budgets', auth, (req, res) => {
-    const { category, monthly_limit } = req.body;
-    if (!category || !monthly_limit)
-        return res.status(400).json({ error: 'Category and limit required.' });
-    db.prepare(
-        'INSERT INTO budgets (user_id, category, monthly_limit) VALUES (?, ?, ?) ON CONFLICT(user_id, category) DO UPDATE SET monthly_limit = ?'
-    ).run(req.session.userId, category, parseFloat(monthly_limit), parseFloat(monthly_limit));
-    res.json({ success: true });
+app.post('/api/budgets', auth, async (req, res) => {
+    try {
+        const { category, monthly_limit } = req.body;
+        if (!category || !monthly_limit)
+            return res.status(400).json({ error: 'Category and limit required.' });
+            
+        await Budget.findOneAndUpdate(
+            { user_id: req.session.userId, category },
+            { monthly_limit: parseFloat(monthly_limit) },
+            { upsert: true, new: true }
+        );
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: 'Server error.' });
+    }
 });
 
-app.delete('/api/budgets/:id', auth, (req, res) => {
-    db.prepare('DELETE FROM budgets WHERE id = ? AND user_id = ?')
-        .run(req.params.id, req.session.userId);
-    res.json({ success: true });
+app.delete('/api/budgets/:id', auth, async (req, res) => {
+    try {
+        await Budget.findOneAndDelete({ _id: req.params.id, user_id: req.session.userId });
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: 'Server error.' });
+    }
 });
 
-// Clear all user budgets
-app.delete('/api/budgets', auth, (req, res) => {
-    db.prepare('DELETE FROM budgets WHERE user_id = ?').run(req.session.userId);
-    res.json({ success: true });
+app.delete('/api/budgets', auth, async (req, res) => {
+    try {
+        await Budget.deleteMany({ user_id: req.session.userId });
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: 'Server error.' });
+    }
 });
 
 // ══════════════════════════════════════════════════════════
 //   SETTINGS ROUTES
 // ══════════════════════════════════════════════════════════
 
-app.put('/api/settings', auth, (req, res) => {
-    const { fullname, currency, theme } = req.body;
-    db.prepare('UPDATE users SET fullname = ?, currency = ?, theme = ? WHERE id = ?')
-        .run(fullname || 'User', currency || '₹', theme || 'light', req.session.userId);
-    res.json({ success: true });
+app.put('/api/settings', auth, async (req, res) => {
+    try {
+        const { fullname, currency, theme } = req.body;
+        await User.findByIdAndUpdate(
+            req.session.userId,
+            { fullname: fullname || 'User', currency: currency || '₹', theme: theme || 'light' }
+        );
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: 'Server error.' });
+    }
 });
 
-app.put('/api/settings/password', auth, (req, res) => {
-    const { current_password, new_password } = req.body;
-    if (!current_password || !new_password)
-        return res.status(400).json({ error: 'Both passwords required.' });
-    if (new_password.length < 6)
-        return res.status(400).json({ error: 'New password must be at least 6 characters.' });
+app.put('/api/settings/password', auth, async (req, res) => {
+    try {
+        const { current_password, new_password } = req.body;
+        if (!current_password || !new_password)
+            return res.status(400).json({ error: 'Both passwords required.' });
+        if (new_password.length < 6)
+            return res.status(400).json({ error: 'New password must be at least 6 characters.' });
 
-    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.session.userId);
-    const hash = hashPwd(current_password, user.salt);
-    if (hash !== user.password_hash)
-        return res.status(401).json({ error: 'Current password is incorrect.' });
+        const user = await User.findById(req.session.userId);
+        if (!user) return res.status(404).json({ error: 'User not found.' });
+        
+        const hash = hashPwd(current_password, user.salt);
+        if (hash !== user.password_hash)
+            return res.status(401).json({ error: 'Current password is incorrect.' });
 
-    const salt = genSalt();
-    const newHash = hashPwd(new_password, salt);
-    db.prepare('UPDATE users SET password_hash = ?, salt = ? WHERE id = ?')
-        .run(newHash, salt, req.session.userId);
-    res.json({ success: true });
+        const salt = genSalt();
+        const newHash = hashPwd(new_password, salt);
+        
+        user.password_hash = newHash;
+        user.salt = salt;
+        await user.save();
+        
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: 'Server error.' });
+    }
 });
 
-// Delete account
-app.delete('/api/account', auth, (req, res) => {
-    const { password } = req.body;
-    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.session.userId);
-    const hash = hashPwd(password, user.salt);
-    if (hash !== user.password_hash)
-        return res.status(401).json({ error: 'Incorrect password.' });
+app.delete('/api/account', auth, async (req, res) => {
+    try {
+        const { password } = req.body;
+        const user = await User.findById(req.session.userId);
+        if (!user) return res.status(404).json({ error: 'User not found.' });
+        
+        const hash = hashPwd(password, user.salt);
+        if (hash !== user.password_hash)
+            return res.status(401).json({ error: 'Incorrect password.' });
 
-    // CASCADE will delete transactions + budgets
-    db.prepare('DELETE FROM users WHERE id = ?').run(req.session.userId);
-    req.session.destroy(() => res.json({ success: true }));
+        // Delete user and associated data
+        await User.findByIdAndDelete(req.session.userId);
+        await Transaction.deleteMany({ user_id: req.session.userId });
+        await Budget.deleteMany({ user_id: req.session.userId });
+        
+        req.session.destroy(() => res.json({ success: true }));
+    } catch (err) {
+        res.status(500).json({ error: 'Server error.' });
+    }
 });
 
 // ══════════════════════════════════════════════════════════
 //   START
 // ══════════════════════════════════════════════════════════
-app.listen(PORT, () => {
-    console.log('\n╔════════════════════════════════════════════╗');
-    console.log('║     SMART EXPENSE MANAGER — SERVER         ║');
-    console.log('╠════════════════════════════════════════════╣');
-    console.log(`║  URL      : http://localhost:${PORT}          ║`);
-    console.log(`║  Database : expense.db                     ║`);
-    console.log('╚════════════════════════════════════════════╝\n');
-    console.log('  Press Ctrl+C to stop the server\n');
-});
+if (process.env.NODE_ENV !== 'production') {
+    app.listen(PORT, () => {
+        console.log('\n╔════════════════════════════════════════════╗');
+        console.log('║     SMART EXPENSE MANAGER — SERVER         ║');
+        console.log('╠════════════════════════════════════════════╣');
+        console.log(`║  URL      : http://localhost:${PORT}          ║`);
+        console.log('╚════════════════════════════════════════════╝\n');
+        console.log('  Press Ctrl+C to stop the server\n');
+    });
+}
+
+// Export for Vercel Serverless Functions
+module.exports = app;
