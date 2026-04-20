@@ -7,8 +7,6 @@
 
 'use strict';
 
-require('dotenv').config();
-
 const express = require('express');
 const session = require('express-session');
 const mongoose = require('mongoose');
@@ -20,10 +18,18 @@ const path = require('path');
 const PORT = process.env.PORT || 3001;
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/smart-expense';
 
-// ── Database ────────────────────────────────────────────────
-mongoose.connect(MONGODB_URI)
-  .then(() => console.log('✅ Connected to MongoDB'))
-  .catch(err => console.error('❌ MongoDB connection error:', err));
+// ── Database (Serverless Optimized) ─────────────────────────
+// Reuse connection across lambda invocations
+let clientPromise;
+if (!global._mongoClientPromise) {
+    global._mongoClientPromise = mongoose.connect(MONGODB_URI).then(m => {
+        console.log('✅ Connected to MongoDB');
+        return m.connection.getClient();
+    }).catch(err => {
+        console.error('❌ MongoDB connection error:', err);
+    });
+}
+clientPromise = global._mongoClientPromise;
 
 // Schemas
 const userSchema = new mongoose.Schema({
@@ -78,7 +84,7 @@ app.use(session({
     resave: false,
     saveUninitialized: false,
     store: MongoStore.create({
-        mongoUrl: MONGODB_URI,
+        clientPromise: clientPromise,
         collectionName: 'sessions'
     }),
     cookie: {
