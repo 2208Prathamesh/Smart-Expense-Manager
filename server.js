@@ -7,6 +7,8 @@
 
 'use strict';
 
+require('dotenv').config();
+
 const express = require('express');
 const session = require('express-session');
 const mongoose = require('mongoose');
@@ -51,9 +53,9 @@ const budgetSchema = new mongoose.Schema({
 });
 budgetSchema.index({ user_id: 1, category: 1 }, { unique: true });
 
-const User = mongoose.model('User', userSchema);
-const Transaction = mongoose.model('Transaction', transactionSchema);
-const Budget = mongoose.model('Budget', budgetSchema);
+const User = mongoose.models.User || mongoose.model('User', userSchema);
+const Transaction = mongoose.models.Transaction || mongoose.model('Transaction', transactionSchema);
+const Budget = mongoose.models.Budget || mongoose.model('Budget', budgetSchema);
 
 // ── Helpers ─────────────────────────────────────────────────
 function genSalt() { return crypto.randomBytes(16).toString('hex'); }
