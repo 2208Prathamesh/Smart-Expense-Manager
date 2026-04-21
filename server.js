@@ -136,7 +136,7 @@ app.post('/api/auth/login', async (req, res) => {
     try {
         const { username, password } = req.body;
         if (!username || !password)
-            return res.status(400).json({ error: 'Username and password required.' });
+            return res.status(400).json({ error: 'Username and password required.'});
 
         const user = await User.findOne({ username: username.toLowerCase() });
         if (!user) return res.status(401).json({ error: 'Invalid username or password.' });
@@ -151,7 +151,7 @@ app.post('/api/auth/login', async (req, res) => {
             user: { id: user._id, fullname: user.fullname, username: user.username, currency: user.currency, theme: user.theme }
         });
     } catch (err) {
-        res.status(500).json({ error: 'Server error during login.' });
+        res.status(500).json({ error: err,message:err.message });
     }
 });
 
